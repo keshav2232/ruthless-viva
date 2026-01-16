@@ -33,9 +33,9 @@ export default function Home() {
         file
       );
       router.push(`/viva/${data.sessionId}?initialQuestion=${encodeURIComponent(data.question)}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to start', error);
-      alert('Failed to start viva. Check backend.');
+      alert(`Failed to start viva: ${error.message || 'Unknown error'}. Check console/network tab.`);
     } finally {
       setLoading(false);
     }
