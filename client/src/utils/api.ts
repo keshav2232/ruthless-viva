@@ -1,4 +1,13 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/viva';
+const getApiBase = () => {
+    let url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/viva';
+    // Remove trailing slash if present
+    if (url.endsWith('/')) url = url.slice(0, -1);
+    // Append /api/viva if missing
+    if (!url.endsWith('/api/viva')) url += '/api/viva';
+    return url;
+};
+
+const API_BASE = getApiBase();
 
 export async function startViva(
     subject: string,
