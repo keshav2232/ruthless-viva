@@ -98,9 +98,66 @@ export default function VivaSession() {
         if (initialQuestion && history.length === 0) {
             setHistory([{ role: 'examiner', text: initialQuestion }]);
         }
+
+        // Pre-load voices (Chrome requires this)
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
     }, [initialQuestion]);
 
+    // Helper for TTS (ElevenLabs or Browser)
+    const speakResponse = (text: string, audioUrl?: string | null) => {
+        setStatus('SPEAKING');
+
+        // Priority 1: ElevenLabs Audio
+        if (audioUrl) {
+            const audio = new Audio(audioUrl);
+            audio.onended = () => {
+                setStatus('LISTENING'); // Auto-switch to listening after speaking
+                try { recognitionRef.current?.start(); } catch (e) { }
+            };
+            audio.play().catch(e => {
+                console.error("Audio play failed, falling back to browser", e);
+                speakBrowserTTS(text);
+            });
+            audioRef.current = audio;
+        }
+        // Priority 2: Browser Fallback
+        else {
+            speakBrowserTTS(text);
+        }
+    };
+
+    const speakBrowserTTS = (text: string) => {
+        console.log("Using Browser TTS Fallback");
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        // Try to find a strict voice
+        const strictVoice = voices.find(v => v.name.includes('Google UK English Male')) ||
+            voices.find(v => v.name.includes('Microsoft David')) ||
+            voices[0];
+        if (strictVoice) utterance.voice = strictVoice;
+
+        utterance.rate = 1.0;
+        utterance.pitch = 0.9;
+
+        utterance.onend = () => {
+            setStatus('LISTENING');
+            try { recognitionRef.current?.start(); } catch (e) { }
+        };
+        window.speechSynthesis.speak(utterance);
+    };
+
     const startListening = () => {
+        // If it's the very start (Examiner has asked Q1, but haven't spoken it yet)
+        // We trigger the speech NOW.
+        if (history.length === 1 && history[0].role === 'examiner' && !transcript) {
+            speakResponse(history[0].text, null); // No audioUrl for first Q yet (passed via URL param is hard)
+            return;
+        }
+
         setTranscript('');
         setLiveStats({ confidence: 100, fillerCount: 0 }); // Reset stats
         setStatus('LISTENING');
@@ -116,8 +173,6 @@ export default function VivaSession() {
         if (transcript.trim().length > 0) {
             handleSubmitAnswer(transcript);
         } else {
-            // If stopped without text, maybe end session? or just go idle.
-            // Let's add an explicit "End Exam" button instead or handle it here?
             setStatus('IDLE');
         }
     };
@@ -138,6 +193,9 @@ export default function VivaSession() {
     };
 
     const handleSubmitAnswer = async (answerText: string) => {
+        // Stop listening immediately to prevent double submission
+        if (recognitionRef.current) recognitionRef.current.stop();
+
         setStatus('PROCESSING');
 
         // Add to history temporarily
@@ -154,38 +212,18 @@ export default function VivaSession() {
             }
 
             // Update history with Examiner response
+            const examinerText = response.reaction + " " + response.nextQuestion;
             setHistory(prev => [
                 ...prev,
-                { role: 'examiner', text: response.reaction + " " + response.nextQuestion }
+                { role: 'examiner', text: examinerText }
             ]);
 
             if (response.analysis) {
                 setFeedback(`Confidence: ${response.analysis.confidence}% | Fillers: ${response.analysis.fillers.count}`);
             }
 
-            // Play Audio or Fallback to Browser TTS
-            if (response.audioUrl) {
-                setStatus('SPEAKING');
-                const audio = new Audio(response.audioUrl);
-                audio.onended = () => setStatus('IDLE');
-                audio.play();
-                audioRef.current = audio;
-            } else {
-                // Fallback: Browser Speech Synthesis
-                console.log("Using Browser TTS Fallback");
-                setStatus('SPEAKING');
-                const utterance = new SpeechSynthesisUtterance(response.reaction + " " + response.nextQuestion);
-                // Try to find a strict voice
-                const voices = window.speechSynthesis.getVoices();
-                const strictVoice = voices.find(v => v.name.includes('Google UK English Male')) || voices[0];
-                if (strictVoice) utterance.voice = strictVoice;
-
-                utterance.rate = 1.1; // Slightly faster
-                utterance.pitch = 0.9; // Lower pitch
-
-                utterance.onend = () => setStatus('IDLE');
-                window.speechSynthesis.speak(utterance);
-            }
+            // Speak the response
+            speakResponse(examinerText, response.audioUrl);
 
         } catch (e) {
             console.error(e);
