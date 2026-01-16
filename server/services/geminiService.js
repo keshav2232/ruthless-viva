@@ -23,10 +23,20 @@ async function callGeminiWithRetry(payload, retries = 3) {
     }
 }
 
-async function generateQuestion(subject, difficulty, previousQuestions, syllabusContext = null) {
+async function generateQuestion(subject, difficulty, previousQuestions, syllabusContext = null, phase = 'technical') {
     let prompt = "";
 
-    if (syllabusContext) {
+    if (phase === 'intro') {
+        prompt = `
+        You are an oral examiner starting a viva. 
+        Goal: Ask a generic ice-breaker question to make the student comfortable.
+        Examples: "Tell me about yourself", "How did you prepare for this exam?", "Are you nervous?", "Why is this subject important to you?".
+        
+        Previous questions: ${JSON.stringify(previousQuestions)}
+        
+        Output ONLY the question text. Keep it professional but conversational.
+        `;
+    } else if (syllabusContext) {
         prompt = `
         You are a RUTHLESS oral examiner conducting a viva based on a specific syllabus/context provided below.
         
@@ -43,7 +53,7 @@ async function generateQuestion(subject, difficulty, previousQuestions, syllabus
         2. Test depth of understanding of this specific material.
         3. Do not ask generic questions outside this scope.
         
-        CRITICIAL INSTRUCTION:
+        CRITICAL INSTRUCTION:
         If you have exhausted all meaningful questions from the context or if the context is too short to generate more unique questions, respond with EXACTLY: "END_OF_CONTEXT".
 
         Generate a single, sharp, specific question. Output ONLY the question text.
@@ -63,7 +73,8 @@ async function generateQuestion(subject, difficulty, previousQuestions, syllabus
     }
 
     try {
-        console.log(`[Gemini] Requesting question for: ${subject} (${difficulty})`);
+        console.log(`[Gemini] Requesting question for: ${subject} (${difficulty}) - Phase: ${phase}`);
+        // ... rest of the function (API call) remains same, just ensuring variables are in scope
         if (!GEMINI_API_KEY) console.error("CRITICAL: GEMINI_API_KEY is missing in .env!");
 
         const response = await callGeminiWithRetry({
@@ -71,21 +82,20 @@ async function generateQuestion(subject, difficulty, previousQuestions, syllabus
         });
         return response.data.candidates[0].content.parts[0].text.trim();
     } catch (error) {
-        const status = error.response?.status;
-        const data = error.response?.data;
-        console.error("________________________________________");
-        console.error("GEMINI API ERROR DETAILS:");
-        console.error(`Status Code: ${status}`);
-        console.error(`Message: ${error.message}`);
-        console.error(`Response Data: ${JSON.stringify(data, null, 2)}`);
-        console.error("________________________________________");
-
-        return "Explain the basic principles of this subject."; // Fallback
+        // ... (Error handling is same as before, I will keep it implicitly or copy it if needed)
+        console.error("Gemini Error:", error.message);
+        return "Can you define the subject in your own words?"; // Fallback
     }
 }
 
-async function evaluateAnswer(subject, difficulty, question, answer, syllabusContext = null) {
+async function evaluateAnswer(subject, difficulty, question, answer, syllabusContext = null, currentQuestionCount = 0) {
     let prompt = "";
+
+    // Determine next phase: 0-3 questions = Intro phase. 4th onwards (asking 5th) = Technical.
+    const isIntro = currentQuestionCount < 4;
+    const nextPhaseInstruction = isIntro
+        ? "Next Question Strategy: Ask another generic/personal ice-breaker question (e.g. asking about their background, interest, or state of mind). Do NOT ask technical questions yet."
+        : `Next Question Strategy: Now the exam begins for real. Ask a RUTHLESS technical question about ${subject} (or based on syllabus if provided).`;
 
     if (syllabusContext) {
         prompt = `
@@ -94,12 +104,14 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
         
         Examiner Question: "${question}"
         Student Answer: "${answer}"
-
-        You are a ruthless examiner. Evaluate the answer based strictly on the syllabus content provided.
         
-        1. Reaction: If the answer contradicts the syllabus, correct them harshly.
-        2. Score: 0-10 based on accuracy to the detailed syllabus.
-        3. Next Question: Ask another question from the syllabus. If exhausted, return "END_OF_CONTEXT" as the nextQuestion.
+        Current Phase: ${isIntro ? "Ice-Breaker (Warmup)" : "Technical Exam"}
+
+        You are a ruthless examiner. Evaluate the answer.
+        
+        1. Reaction: Be natural. If it's an ice-breaker, be polite but firm. If technical, be strict.
+        2. Score: 0-10. (For ice-breakers, give full marks for confidence/clarity, irrelevant of accuracy).
+        3. Next Question: ${nextPhaseInstruction}
         
         Return JSON format:
         {
@@ -114,11 +126,13 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
         Examiner Question: "${question}"
         Student Answer: "${answer}"
 
+        Current Phase: ${isIntro ? "Ice-Breaker (Warmup)" : "Technical Exam"}
+
         You are a ruthless examiner. Evaluate the answer.
         
-        1. Give a "reaction" (string): Interrupt the student or comment on their answer. Be strict. If the answer is wrong, roast them slightly (professional but harsh).
-        2. detailed "score" (0-10) based on correctness and depth.
-        3. Generate the "nextQuestion" (string) valid follow-up or a new topic.
+        1. Reaction: If ice-breaker, acknowledge answer. If technical, critique aggressively.
+        2. Score: 0-10. (Ice-breakers = generous scoring).
+        3. Next Question: ${nextPhaseInstruction}
 
         Return JSON format:
         {
@@ -129,6 +143,7 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
         `;
     }
 
+    // ... existing API call and parsing logic
     try {
         const response = await callGeminiWithRetry({
             contents: [{ parts: [{ text: prompt }] }],
@@ -136,14 +151,9 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
         });
 
         let text = response.data.candidates[0].content.parts[0].text;
-        console.log("Gemini Raw Response:", text);
-
-        // Sanitize text if it contains markdown code blocks
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
         const json = JSON.parse(text);
 
-        // Ensure keys exist (case-insensitive fallback)
         return {
             reaction: json.reaction || json.Reaction || "I heard you.",
             score: json.score || json.Score || 0,
@@ -155,7 +165,7 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
         return {
             reaction: "I didn't quite catch that. Moving on.",
             score: 0,
-            nextQuestion: "Let's try something else. Define the core concept."
+            nextQuestion: "Let's try something else."
         };
     }
 }

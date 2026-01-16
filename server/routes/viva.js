@@ -52,11 +52,13 @@ router.post('/start', upload.single('syllabus'), async (req, res) => {
         };
 
         // Get first question from Gemini
+        // PHASE: INTRO (First question is always intro)
         let question = await geminiService.generateQuestion(
             sessions[sessionId].subject,
             difficulty,
             [],
-            sessions[sessionId].syllabusContext
+            sessions[sessionId].syllabusContext,
+            'intro' // Force intro phase
         );
 
         if (question === "END_OF_CONTEXT") {
@@ -104,13 +106,25 @@ router.post('/respond', async (req, res) => {
         const confidence = analysis.calculateConfidence(answerText, fillers.count, audioConfidence || 1.0);
 
         // 2. Gemini Evaluation
-        // 2. Gemini Evaluation
+        // Calculate how many questions have been asked (history length / 2 roughly, since it's pairs)
+        // Actually, 'scores' array length tells us how many rounds completed. 
+        // We are currently answering the "current" question, so the *next* question will be count + 1.
+        // Let's pass the number of COMPLETED rounds so far (which is session.scores.length).
+        // Actually, we need to count how many questions including the one we just answered.
+        // Since we push to history AFTER evaluation in the original code, we might need to adjust.
+        // Wait, 'evaluateAnswer' determines the NEXT question.
+        // So if we have answered 0 questions so far (this is the first answer), currentQuestionCount is 1.
+        // If count < 4, next is Intro.
+
+        const questionsAskedSoFar = (session.history.length + 1) / 2; // e.g. Examiner said Q1 (len=1). We answer (len will be 2). So 1 question.
+
         const evaluation = await geminiService.evaluateAnswer(
             session.subject,
             session.difficulty,
             session.history[session.history.length - 1].text,
             answerText + ` [System Note: Confidence Score: ${confidence}%]`,
-            session.syllabusContext
+            session.syllabusContext,
+            questionsAskedSoFar // Pass count
         );
 
         if (evaluation.nextQuestion === "END_OF_CONTEXT") {
