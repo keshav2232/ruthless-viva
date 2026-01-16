@@ -175,6 +175,10 @@ export default function Home() {
       <div className="mt-12 text-xs text-[#5c544e] font-sans">
         Powered by Gemini AI & ElevenLabs <br />
         Built for serious viva preparation
+        <br />
+        <span className="opacity-50 mt-2 block">
+          Backend: {process.env.NEXT_PUBLIC_API_URL || 'Using Localhost (Default)'}
+        </span>
       </div>
     </main>
   );
