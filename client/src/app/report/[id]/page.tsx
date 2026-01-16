@@ -59,8 +59,8 @@ export default function ReportPage() {
                     </div>
 
                     <div className="glass-panel p-8 text-center flex flex-col justify-center">
-                        <h3 className="text-[#8c7b70] uppercase text-xs tracking-[0.2em] mb-4">Duration</h3>
-                        <p className="text-6xl font-serif text-[#a89f91]">{data.history.length / 2}</p>
+                        <h3 className="text-[#8c7b70] uppercase text-xs tracking-[0.2em] mb-4">Questions</h3>
+                        <p className="text-6xl font-serif text-[#a89f91]">{Math.floor(data.history.length / 2)}</p>
                         <p className="text-xs text-[#8c7b70] mt-4 font-serif italic">Questions endured</p>
                     </div>
                 </div>
