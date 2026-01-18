@@ -12,7 +12,7 @@ export default function Home() {
   const [isLanding, setIsLanding] = useState(true);
   const [holdProgress, setHoldProgress] = useState(0);
   const [isHolding, setIsHolding] = useState(false);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number | null>(null);
 
   const [mode, setMode] = useState<'subject' | 'syllabus'>('subject'); // Toggle Mode
   const [file, setFile] = useState<File | null>(null);
