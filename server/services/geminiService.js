@@ -58,6 +58,21 @@ async function generateQuestion(subject, difficulty, previousQuestions, syllabus
 
         Generate a single, sharp, specific question. Output ONLY the question text.
         `;
+    } else if (difficulty === 'Easy') {
+        prompt = `
+        You are a KIND and SUPPORTIVE Tutor helping a student revise.
+        Subject: "${subject}".
+        Context (if any): "${syllabusContext ? "Using provided syllabus text" : "General Subject Knowledge"}".
+        
+        Previous questions asked: ${JSON.stringify(previousQuestions)}.
+        
+        Your Goal:
+        1. Ask a simple, direct question to check their basic understanding.
+        2. Be encouraging. Do NOT be ruthless.
+        3. If using syllabus context, ask about a key definition or concept from it.
+        
+        Output ONLY the question text.
+        `;
     } else {
         prompt = `
         You are a RUTHLESS oral examiner conducting a viva on the subject: "${subject}".
@@ -88,14 +103,18 @@ async function generateQuestion(subject, difficulty, previousQuestions, syllabus
     }
 }
 
-async function evaluateAnswer(subject, difficulty, question, answer, syllabusContext = null, currentQuestionCount = 0) {
+async function evaluateAnswer(subject, difficulty, question, answer, syllabusContext = null, currentQuestionCount = 0, includeIntro = true) {
     let prompt = "";
 
-    // Determine next phase: 0-3 questions = Intro phase. 4th onwards (asking 5th) = Technical.
-    const isIntro = currentQuestionCount < 4;
+    // Determine next phase: 
+    // If includeIntro is true: 0-3 questions = Intro phase.
+    // If includeIntro is false: ALWAYS Technical phase.
+    const isIntro = includeIntro && currentQuestionCount < 4;
     const nextPhaseInstruction = isIntro
         ? "Next Question Strategy: Ask another generic/personal ice-breaker question (e.g. asking about their background, interest, or state of mind). Do NOT ask technical questions yet."
-        : `Next Question Strategy: Now the exam begins for real. Ask a RUTHLESS technical question about ${subject} (or based on syllabus if provided).`;
+        : (difficulty === 'Easy'
+            ? `Next Question Strategy: Now check their knowledge gently. Ask a simple, direct question about ${subject} (or based on syllabus). Be helpful.`
+            : `Next Question Strategy: Now the exam begins for real. Ask a RUTHLESS technical question about ${subject} (or based on syllabus if provided).`);
 
     if (syllabusContext) {
         prompt = `
@@ -107,9 +126,9 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
         
         Current Phase: ${isIntro ? "Ice-Breaker (Warmup)" : "Technical Exam"}
 
-        You are a ruthless examiner. Evaluate the answer.
+        You are ${difficulty === 'Easy' ? 'a helpful tutor' : 'a ruthless examiner'}. Evaluate the answer.
         
-        1. Reaction: Be natural. If it's an ice-breaker, be polite but firm. If technical, be strict.
+        1. Reaction: Be natural. ${difficulty === 'Easy' ? 'Be encouraging and supportive.' : "If it's an ice-breaker, be polite but firm. If technical, be strict."}
         2. Score: 0-10. (For ice-breakers, give full marks for confidence/clarity, irrelevant of accuracy).
         3. Next Question: ${nextPhaseInstruction}
         
@@ -118,6 +137,27 @@ async function evaluateAnswer(subject, difficulty, question, answer, syllabusCon
             "reaction": "...",
             "score": number,
             "nextQuestion": "..." 
+        }
+        `;
+    } else if (difficulty === 'Easy') {
+        prompt = `
+        Context: Friendly Revision Session on "${subject}".
+        Tutor Question: "${question}"
+        Student Answer: "${answer}"
+
+        Current Phase: ${isIntro ? "Ice-Breaker (Warmup)" : "Knowledge Check"}
+
+        You are a KIND TUTOR. Evaluate the answer.
+        
+        1. Reaction: Be very encouraging. If they are wrong, gently correct them. If right, praise them.
+        2. Score: 0-10. Be generous.
+        3. Next Question: Ask a follow-up simple question to help them learn more.
+
+        Return JSON format:
+        {
+            "reaction": "...",
+            "score": number,
+            "nextQuestion": "..."
         }
         `;
     } else {

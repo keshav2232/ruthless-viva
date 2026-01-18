@@ -14,7 +14,8 @@ export async function startViva(
     difficulty: string,
     studentName: string,
     syllabusText?: string,
-    syllabusFile?: File | null
+    syllabusFile?: File | null,
+    includeIntro: boolean = true
 ) {
     let body: any;
     let headers: any = {};
@@ -24,13 +25,14 @@ export async function startViva(
         formData.append('subject', subject);
         formData.append('difficulty', difficulty);
         formData.append('studentName', studentName);
+        formData.append('includeIntro', String(includeIntro));
         if (syllabusText) formData.append('syllabusText', syllabusText);
         formData.append('syllabus', syllabusFile);
 
         body = formData;
         // Content-Type header is automatically set by browser with FormData
     } else {
-        body = JSON.stringify({ subject, difficulty, studentName, syllabusText });
+        body = JSON.stringify({ subject, difficulty, studentName, syllabusText, includeIntro });
         headers['Content-Type'] = 'application/json';
     }
 

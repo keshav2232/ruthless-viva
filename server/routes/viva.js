@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const geminiService = require('../services/geminiService');
 const elevenLabsService = require('../services/elevenLabsService');
+// const coquiService = require('../services/coquiService');
+const ttsService = elevenLabsService; // Alias for easy switching
 
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
@@ -18,6 +20,9 @@ const sessions = {};
 router.post('/start', upload.single('syllabus'), async (req, res) => {
     try {
         const { subject, difficulty, studentName, syllabusText } = req.body;
+        // includeIntro might be string "true"/"false" if from FormData, or boolean if JSON
+        const includeIntro = req.body.includeIntro === 'false' ? false : (req.body.includeIntro !== false);
+
         const sessionId = Date.now().toString();
 
         let context = "";
@@ -47,18 +52,21 @@ router.post('/start', upload.single('syllabus'), async (req, res) => {
             difficulty,
             studentName,
             syllabusContext: context || null,
+            includeIntro, // STORE IT
             history: [],
             scores: []
         };
 
         // Get first question from Gemini
-        // PHASE: INTRO (First question is always intro)
+        // PHASE: INTRO (First question is always intro UNLESS includeIntro is false)
+        const initialPhase = includeIntro ? 'intro' : 'technical';
+
         let question = await geminiService.generateQuestion(
             sessions[sessionId].subject,
             difficulty,
             [],
             sessions[sessionId].syllabusContext,
-            'intro' // Force intro phase
+            initialPhase
         );
 
         if (question === "END_OF_CONTEXT") {
@@ -75,7 +83,7 @@ router.post('/start', upload.single('syllabus'), async (req, res) => {
             cleanQuestion = cleanQuestion.replace(/\*([^*]+)\*/g, (match, p1) => p1.toUpperCase());
             cleanQuestion = cleanQuestion.replace(/[_~`]/g, "");
 
-            audioUrl = await elevenLabsService.generateSpeech(cleanQuestion);
+            audioUrl = await ttsService.generateSpeech(cleanQuestion);
         } catch (audioError) {
             console.error("Audio generation failed (ignoring):", audioError.message);
         }
@@ -124,7 +132,9 @@ router.post('/respond', async (req, res) => {
             session.history[session.history.length - 1].text,
             answerText + ` [System Note: Confidence Score: ${confidence}%]`,
             session.syllabusContext,
-            questionsAskedSoFar // Pass count
+            session.syllabusContext,
+            questionsAskedSoFar, // Pass count
+            session.includeIntro // Pass intro setting
         );
 
         if (evaluation.nextQuestion === "END_OF_CONTEXT") {
@@ -145,7 +155,7 @@ router.post('/respond', async (req, res) => {
 
         let audioUrl = null;
         try {
-            audioUrl = await elevenLabsService.generateSpeech(cleanSpeechText);
+            audioUrl = await ttsService.generateSpeech(cleanSpeechText);
         } catch (audioError) {
             console.error("Audio generation failed (ignoring):", audioError.message);
         }

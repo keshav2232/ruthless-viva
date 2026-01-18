@@ -11,6 +11,8 @@ export default function Home() {
   const [mode, setMode] = useState<'subject' | 'syllabus'>('subject'); // Toggle Mode
   const [file, setFile] = useState<File | null>(null);
 
+  const [includeIntro, setIncludeIntro] = useState(true);
+
   const [formData, setFormData] = useState({
     studentName: '',
     subject: '',
@@ -30,7 +32,8 @@ export default function Home() {
         formData.difficulty,
         formData.studentName,
         formData.syllabusText,
-        file
+        file,
+        includeIntro
       );
       router.push(`/viva/${data.sessionId}?initialQuestion=${encodeURIComponent(data.question)}`);
     } catch (error: any) {
@@ -138,6 +141,7 @@ export default function Home() {
                   value={formData.difficulty}
                   onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
                 >
+                  <option value="Easy">Easy</option>
                   <option value="Normal">Normal</option>
                   <option value="Torment">Torment</option>
                   <option value="Ruthless">Ruthless</option>
@@ -145,15 +149,29 @@ export default function Home() {
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">▼</div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading || (mode === 'syllabus' && !formData.syllabusText && !file)}
-                className="flex-[2] vintage-btn text-[#e5e0d8] font-bold py-3 rounded-md uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Preparing...' : 'Begin Viva'}
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="introCheck"
+                  className="w-5 h-5 accent-[#582f29] cursor-pointer"
+                  checked={includeIntro}
+                  onChange={(e) => setIncludeIntro(e.target.checked)}
+                />
+                <label htmlFor="introCheck" className="text-xs uppercase tracking-wide text-[#8c7b70] cursor-pointer select-none">
+                  Include<br />Intro
+                </label>
+              </div>
             </div>
+
+            <button
+              type="submit"
+              disabled={loading || (mode === 'syllabus' && !formData.syllabusText && !file)}
+              className="flex-[2] vintage-btn text-[#e5e0d8] font-bold py-3 rounded-md uppercase tracking-wider text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Preparing...' : 'Begin Viva'}
+            </button>
           </div>
+
 
           {/* Divider */}
           <div className="border-t border-[#3e342f] my-2"></div>
@@ -170,7 +188,7 @@ export default function Home() {
           </div>
 
         </form>
-      </div>
+      </div >
 
       <div className="mt-12 text-xs text-[#5c544e] font-sans">
         Powered by Gemini AI & ElevenLabs <br />
@@ -180,6 +198,6 @@ export default function Home() {
           Backend: {process.env.NEXT_PUBLIC_API_URL || 'Using Localhost (Default)'}
         </span>
       </div>
-    </main>
+    </main >
   );
 }

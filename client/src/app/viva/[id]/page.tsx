@@ -28,11 +28,14 @@ export default function VivaSession() {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const confidenceRef = useRef<number>(1.0); // Default to 1.0 (100%)
 
+    const [started, setStarted] = useState(false);
+
     useEffect(() => {
         // Initialize Speech Recognition
         if (typeof window !== 'undefined' && window.webkitSpeechRecognition) {
+            // ... (keep recognition init)
             const recognition = new window.webkitSpeechRecognition();
-            recognition.continuous = true; // KEEP LISTENING even if user pauses
+            recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'en-US';
 
@@ -51,33 +54,26 @@ export default function VivaSession() {
 
                 const currentTranscript = Array.from(event.results)
                     .map((result: any) => result[0].transcript)
-                    .join(''); // Use join('') to get the full running text, or handle appropriately
+                    .join('');
 
                 // --- Live Analysis ---
-                // 1. Calculate Confidence (Simple moving average for now, or just current chunk)
-                // Note: Web Speech API confidence is 0.0-1.0. We want 0-100.
                 let currentConfidence = 100;
                 if (resultCount > 0) {
-                    // If we have final results, use them
                     currentConfidence = Math.round((totalConfidence / resultCount) * 100);
-                    // Update ref for final submission
                     confidenceRef.current = totalConfidence / resultCount;
                 } else if (event.results.length > 0) {
-                    // Use interim confidence (often not provided by all browsers, but safe to check)
                     const lastResult = event.results[event.results.length - 1];
                     if (lastResult && lastResult[0] && lastResult[0].confidence) {
                         currentConfidence = Math.round(lastResult[0].confidence * 100);
                     }
                 }
 
-                // 2. Count Fillers
-                // Simple regex for common fillers.
                 const fillerRegex = /\b(um|uh|like|you know|i mean|sort of)\b/gi;
                 const matches = currentTranscript.match(fillerRegex);
                 const currentFillerCount = matches ? matches.length : 0;
 
                 setLiveStats({
-                    confidence: currentConfidence > 0 ? currentConfidence : 100, // Default to 100 if 0 (start)
+                    confidence: currentConfidence > 0 ? currentConfidence : 100,
                     fillerCount: currentFillerCount
                 });
 
@@ -94,10 +90,8 @@ export default function VivaSession() {
             recognitionRef.current = recognition;
         }
 
-        // Initialize Initial Question
-        if (initialQuestion && history.length === 0) {
-            setHistory([{ role: 'examiner', text: initialQuestion }]);
-        }
+        // REMOVED: Initial History Setting
+        // We now wait for user to Start.
 
         // Pre-load voices (Chrome requires this)
         if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -197,6 +191,7 @@ export default function VivaSession() {
         if (recognitionRef.current) recognitionRef.current.stop();
 
         setStatus('PROCESSING');
+        setTranscript(''); // Clear previous answer so it doesn't show up next turn
 
         // Add to history temporarily
         setHistory(prev => [...prev, { role: 'student', text: answerText }]);
@@ -231,24 +226,68 @@ export default function VivaSession() {
         }
     };
 
+    const handleStart = () => {
+        setStarted(true);
+        if (initialQuestion) {
+            setHistory([{ role: 'examiner', text: initialQuestion }]);
+            // Small delay to ensure state updates before speaking (though speakResponse doesn't depend on history state directly for the text)
+            // But we pass the text directly.
+            speakResponse(initialQuestion, null);
+        }
+    };
+
     return (
         <main className="min-h-screen flex flex-col items-center p-4">
 
             {/* Visualizer / Avatar */}
             <div className="flex-1 flex flex-col items-center justify-center w-full max-w-4xl">
-                <div className={`relative w-48 h-48 rounded-full border-4 flex items-center justify-center transition-all duration-500 shadow-2xl
-            ${status === 'SPEAKING' ? 'border-[#582f29] scale-110 examiner-pulse' : 'border-[#3e342f]'}
-            ${status === 'PROCESSING' ? 'animate-spin border-t-[#582f29]' : ''}
-        `}>
-                    <div className="text-5xl opacity-80 filter sepia">
-                        {status === 'SPEAKING' ? '🗣️' : status === 'LISTENING' ? '👂' : '👨‍🏫'}
+
+                {/* Main Orb Container */}
+                <div className={`relative w-64 h-64 flex items-center justify-center transition-all duration-500`}>
+
+                    {/* Outer Glow / Ripple Effect */}
+                    {status === 'SPEAKING' && (
+                        <>
+                            <div className="absolute inset-0 rounded-full border border-[#582f29]/40 animate-[ping_2s_linear_infinite]"></div>
+                            <div className="absolute inset-4 rounded-full border border-[#582f29]/20 animate-[ping_2s_linear_infinite_0.5s]"></div>
+                        </>
+                    )}
+
+                    {/* Core Interface */}
+                    <div className={`relative w-48 h-48 rounded-full bg-[#1a1614] border-2 flex items-center justify-center shadow-2xl transition-all duration-300
+                        ${status === 'SPEAKING' ? 'border-[#582f29] shadow-[0_0_30px_rgba(88,47,41,0.4)]' : 'border-[#3e342f]'}
+                        ${status === 'LISTENING' ? 'border-[#e5e0d8]/20' : ''}
+                    `}>
+
+                        {/* Visualizer State Switch */}
+                        {status === 'SPEAKING' ? (
+                            <div className="flex items-center gap-1.5 h-16">
+                                <div className="w-2 bg-[#582f29] rounded-full animate-[pulse_0.4s_ease-in-out_infinite] h-8"></div>
+                                <div className="w-2 bg-[#582f29] rounded-full animate-[pulse_0.6s_ease-in-out_infinite] h-12"></div>
+                                <div className="w-2 bg-[#582f29] rounded-full animate-[pulse_0.5s_ease-in-out_infinite] h-16"></div>
+                                <div className="w-2 bg-[#582f29] rounded-full animate-[pulse_0.7s_ease-in-out_infinite] h-10"></div>
+                                <div className="w-2 bg-[#582f29] rounded-full animate-[pulse_0.4s_ease-in-out_infinite] h-6"></div>
+                            </div>
+                        ) : status === 'LISTENING' ? (
+                            <div className="flex flex-col items-center gap-2">
+                                <div className="w-4 h-4 rounded-full bg-[#a89f91] animate-pulse shadow-[0_0_15px_rgba(168,159,145,0.5)]"></div>
+                                <span className="text-[10px] uppercase tracking-[0.2em] text-[#5c544e]">Rec</span>
+                            </div>
+                        ) : status === 'PROCESSING' ? (
+                            <div className="w-12 h-12 border-2 border-[#582f29] border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                            // Idle / Waiting for Start
+                            <div className="w-3 h-3 rounded-full bg-[#3e342f]"></div>
+                        )}
+
                     </div>
                 </div>
 
                 <p className="mt-8 text-xl text-center text-[#a89f91] font-serif italic min-h-[3rem]">
                     {status === 'SPEAKING' ? 'The Examiner is speaking...' :
                         status === 'LISTENING' ? 'Listening to your response...' :
-                            status === 'PROCESSING' ? 'Analyzing your competence...' : 'Waiting for you...'}
+                            status === 'PROCESSING' ? 'Analyzing your competence...' :
+                                !started ? 'Examiner is waiting...' : 'Waiting for you...'}
                 </p>
 
                 {/* Feedback Display */}
@@ -313,10 +352,10 @@ export default function VivaSession() {
             <div className="mb-12 w-full max-w-md flex flex-col items-center">
                 {status === 'IDLE' && (
                     <button
-                        onClick={startListening}
+                        onClick={!started ? handleStart : startListening}
                         className="vintage-btn w-full text-[#e5e0d8] font-bold py-4 px-12 rounded-lg uppercase tracking-widest transition-transform hover:scale-105"
                     >
-                        Tap to Speak
+                        {!started ? 'Tap to Start' : 'Tap to Speak'}
                     </button>
                 )}
 
