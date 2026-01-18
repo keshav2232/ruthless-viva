@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { startViva } from '../utils/api';
 
@@ -10,7 +10,9 @@ export default function Home() {
 
   // New interactive states
   const [isLanding, setIsLanding] = useState(true);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [isHolding, setIsHolding] = useState(false);
+  const requestRef = useRef<number>();
 
   const [mode, setMode] = useState<'subject' | 'syllabus'>('subject'); // Toggle Mode
   const [file, setFile] = useState<File | null>(null);
@@ -24,13 +26,32 @@ export default function Home() {
     syllabusText: ''
   });
 
-  const handleEnter = () => {
-    setIsLanding(false);
-  };
+  // Hold Animation Logic
+  useEffect(() => {
+    if (isHolding) {
+      const animate = () => {
+        setHoldProgress((prev) => {
+          if (prev >= 100) {
+            setIsLanding(false); // Trigger transition
+            setIsHolding(false);
+            return 100;
+          }
+          return prev + 2; // Speed of fill
+        });
+        requestRef.current = requestAnimationFrame(animate);
+      };
+      requestRef.current = requestAnimationFrame(animate);
+    } else {
+      setHoldProgress(0);
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    }
+    return () => {
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    };
+  }, [isHolding]);
 
-  const handleMouseMove = (e: React.MouseEvent) => {
-    setMousePos({ x: e.clientX, y: e.clientY });
-  };
+  const startHold = () => setIsHolding(true);
+  const endHold = () => setIsHolding(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,8 +79,8 @@ export default function Home() {
 
   return (
     <main
-      onMouseMove={handleMouseMove}
-      className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative overflow-hidden bg-[#0d0b0a]"
+      className="min-h-screen flex flex-col items-center justify-center p-4 text-center relative overflow-hidden bg-[#0d0b0a] select-none"
+      onContextMenu={(e) => e.preventDefault()} // Prevent context menu on hold
     >
 
       {/* Background Noise/Grain Overlay */}
@@ -67,50 +88,96 @@ export default function Home() {
         style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }}>
       </div>
 
-      {/* Interactive Spotlight Effect */}
-      {isLanding && (
-        <div
-          className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-1000"
-          style={{
-            background: `radial-gradient(600px circle at ${mousePos.x}px ${mousePos.y}px, rgba(88, 47, 41, 0.15), transparent 40%)`
-          }}
-        />
-      )}
+      {/* Floating Particles (CSS Only) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {[...Array(20)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full bg-[#e5e0d8] opacity-[0.05]"
+            style={{
+              width: Math.random() * 4 + 1 + 'px',
+              height: Math.random() * 4 + 1 + 'px',
+              top: Math.random() * 100 + '%',
+              left: Math.random() * 100 + '%',
+              animation: `float ${Math.random() * 10 + 10}s infinite linear`
+            }}
+          />
+        ))}
+        <style jsx>{`
+          @keyframes float {
+            0% { transform: translateY(0) translateX(0); opacity: 0; }
+            50% { opacity: 0.1; }
+            100% { transform: translateY(-100px) translateX(50px); opacity: 0; }
+          }
+        `}</style>
+      </div>
 
       {/* LANDING STATE (HERO) */}
       <div className={`transition-all duration-1000 ease-in-out absolute inset-0 flex flex-col items-center justify-center z-20 
           ${isLanding ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-10 pointer-events-none'}`}>
 
-        <h1 className="text-6xl md:text-9xl text-[#e5e0d8] font-serif tracking-[0.2em] mb-6 glow-text animate-[fadeIn_1s_ease-out] select-none hover:text-[#ffecd1] transition-colors duration-500">
+        <h1 className="text-6xl md:text-9xl text-[#e5e0d8] font-serif tracking-[0.2em] mb-12 glow-text animate-[fadeIn_1s_ease-out]">
           VIVA
         </h1>
 
-        <div className="h-px w-32 bg-[#582f29] opacity-0 animate-[growWidth_1s_ease-out_0.5s_forwards]"></div>
+        {/* HOLD INTERACTION BUTTON */}
+        <div
+          className="relative w-32 h-32 flex items-center justify-center cursor-pointer group"
+          onMouseDown={startHold}
+          onMouseUp={endHold}
+          onMouseLeave={endHold}
+          onTouchStart={startHold}
+          onTouchEnd={endHold}
+        >
+          {/* Progress Ring */}
+          <svg className="absolute inset-0 w-full h-full rotate-[-90deg]">
+            <circle
+              cx="64" cy="64" r="60"
+              stroke="#3e342f" strokeWidth="2" fill="transparent"
+            />
+            <circle
+              cx="64" cy="64" r="60"
+              stroke="#582f29" strokeWidth="4" fill="transparent"
+              strokeDasharray="377"
+              strokeDashoffset={377 - (377 * holdProgress) / 100}
+              strokeLinecap="round"
+              className="transition-all duration-75 ease-linear"
+            />
+          </svg>
 
-        <p className="text-[#a89f91] text-xl md:text-2xl mt-8 font-serif italic max-w-md opacity-0 animate-[fadeIn_1s_ease-out_1s_forwards]">
-          "Confidence is silent. Insecurities are loud."
+          {/* Inner Icon */}
+          <div className={`w-24 h-24 rounded-full bg-[#1a1614] flex items-center justify-center border border-[#3e342f] transition-all duration-300 ${isHolding ? 'scale-95 border-[#582f29]' : 'group-hover:scale-105'}`}>
+            <div className={`w-12 h-12 text-[#e5e0d8] transition-opacity duration-300 ${isHolding ? 'opacity-100' : 'opacity-50'}`}>
+              {/* Fingerprint / Power Icon SVG */}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v10" />
+                <path d="M18.4 6.6a9 9 0 1 1-12.8 0" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Pulse Effect */}
+          {!isHolding && <div className="absolute inset-0 rounded-full border border-[#582f29]/30 animate-ping pointer-events-none"></div>}
+        </div>
+
+        <p className="text-[#a89f91] text-sm tracking-[0.3em] uppercase mt-8 animate-pulse">
+          {isHolding ? 'Initializing...' : 'Hold to Enter'}
         </p>
 
-        <button
-          onClick={handleEnter}
-          className="group mt-16 vintage-btn px-12 py-5 text-lg tracking-[0.3em] uppercase font-bold text-[#e5e0d8] opacity-0 animate-[fadeIn_1s_ease-out_1.5s_forwards] hover:scale-105 transition-transform flex items-center gap-4"
-        >
-          <span>Enter the Chamber</span>
-          <span className="group-hover:translate-x-1 transition-transform">→</span>
-        </button>
       </div>
 
       {/* FORM STATE (Configuration) */}
       <div className={`transition-all duration-1000 ease-in-out w-full flex flex-col items-center z-30
           ${!isLanding ? 'opacity-100 translate-y-0 delay-500' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
 
-        {/* Header Section (Simplified for inner view) */}
-        <div className="mb-8 space-y-2">
-          <h1 className="text-3xl md:text-4xl text-[#e5e0d8] opacity-80 tracking-wide font-serif">
-            Configuration
+        {/* Header Section */}
+        <div className="mb-12 space-y-4">
+          <h1 className="text-5xl md:text-6xl text-[#e5e0d8] opacity-90 tracking-wide glow-text">
+            Ruthless Viva Simulator
           </h1>
-          <p className="text-[#8c7b70] text-sm font-serif italic">
-            Prepare yourself.
+          <div className="h-px w-24 bg-[#582f29] mx-auto opacity-50 my-4"></div>
+          <p className="text-[#a89f91] text-lg max-w-lg mx-auto font-serif italic">
+            An AI examiner that evaluates <br /> clarity, confidence, and correctness.
           </p>
         </div>
 
